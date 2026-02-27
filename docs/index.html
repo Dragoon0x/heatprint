@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Heatprint — Turn interactions into generative art</title>
+  <meta name="description" content="Drop it on any page. It tracks cursor movement, clicks, scroll depth. Then renders it as a beautiful abstract visualization. Every person's interaction portrait is different.">
+  <meta property="og:title" content="Heatprint — Your interaction portrait">
+  <meta property="og:description" content="Turn user interactions into generative art. Six visualization modes. One npm install.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Azeret+Mono:wght@400;500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #05050a;
+      --bg-surface: #0a0a12;
+      --bg-elevated: #0e0e18;
+      --text: #c8c8d0;
+      --text-dim: #64647a;
+      --text-muted: #3a3a4a;
+      --accent: #8B5CF6;
+      --accent-dim: rgba(139,92,246,0.15);
+      --warm: #F59E0B;
+      --cool: #06B6D4;
+      --rose: #F43F5E;
+      --border: #16161f;
+      --serif: 'Cormorant Garamond', Georgia, serif;
+      --sans: 'Manrope', -apple-system, sans-serif;
+      --mono: 'Azeret Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    ::selection { background: rgba(139,92,246,0.25); color: #e0d0ff; }
+
+    /* ─── Canvas Overlay ────────────────────────────── */
+    #heatCanvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0;
+      transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #heatCanvas.visible { opacity: 0.85; }
+
+    /* ─── Top Bar ───────────────────────────────────── */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(20px);
+      background: rgba(5,5,10,0.6);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar-logo {
+      font-family: var(--serif);
+      font-size: 17px;
+      font-weight: 400;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .point-counter {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .point-counter .dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: blink 2s ease infinite;
+    }
+    @keyframes blink {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .reveal-btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+    }
+    .reveal-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+      box-shadow: 0 0 20px rgba(139,92,246,0.1);
+    }
+    .reveal-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    /* ─── Layout ────────────────────────────────────── */
+    .container { max-width: 680px; margin: 0 auto; padding: 0 28px; position: relative; z-index: 2; }
+
+    /* ─── Hero ──────────────────────────────────────── */
+    .hero {
+      padding: 200px 0 140px;
+      text-align: center;
+    }
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      margin-bottom: 32px;
+      opacity: 0;
+      animation: fadeIn 0.8s ease forwards 0.3s;
+    }
+    .hero h1 {
+      font-family: var(--serif);
+      font-size: clamp(52px, 9vw, 88px);
+      font-weight: 300;
+      line-height: 1.0;
+      letter-spacing: -0.02em;
+      color: #f0f0f5;
+      margin-bottom: 32px;
+      opacity: 0;
+      animation: fadeUp 1s ease forwards 0.45s;
+    }
+    .hero h1 em { font-style: italic; font-weight: 300; }
+    .hero-sub {
+      font-size: 17px;
+      font-weight: 300;
+      color: var(--text-dim);
+      max-width: 420px;
+      margin: 0 auto 48px;
+      line-height: 1.7;
+      opacity: 0;
+      animation: fadeUp 0.8s ease forwards 0.7s;
+    }
+    .hero-install {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      padding: 10px 18px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      opacity: 0;
+      animation: fadeUp 0.7s ease forwards 0.9s;
+    }
+    .hero-install:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .hero-install .tag {
+      font-size: 9px;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .hero-hint {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 48px;
+      letter-spacing: 0.05em;
+      opacity: 0;
+      animation: fadeIn 0.6s ease forwards 1.8s;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ─── Sections ──────────────────────────────────── */
+    section { padding: 80px 0; border-top: 1px solid var(--border); }
+    section h2 {
+      font-family: var(--serif);
+      font-size: 34px;
+      font-weight: 300;
+      color: #e8e8f0;
+      margin-bottom: 16px;
+    }
+    section p {
+      color: var(--text-dim);
+      font-size: 15px;
+      font-weight: 300;
+      margin-bottom: 20px;
+      line-height: 1.75;
+    }
+    section p code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      background: var(--bg-elevated);
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      color: var(--accent);
+    }
+
+    /* ─── Code Blocks ───────────────────────────────── */
+    pre {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      overflow-x: auto;
+      margin: 0 0 28px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-dim);
+    }
+    pre .kw { color: var(--accent); }
+    pre .fn { color: var(--cool); }
+    pre .str { color: #34D399; }
+    pre .comp { color: var(--rose); }
+    pre .prop { color: var(--warm); }
+    pre .cmt { color: var(--text-muted); font-style: italic; }
+    pre .num { color: #F59E0B; }
+
+    /* ─── Mode Gallery ──────────────────────────────── */
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 24px 0 32px;
+    }
+    .mode-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .mode-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .mode-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .mode-card:hover::before { opacity: 1; }
+    .mode-card.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .mode-card canvas {
+      width: 100%;
+      height: 80px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      background: var(--bg);
+    }
+    .mode-card h4 {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 2px;
+    }
+    .mode-card p {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin: 0;
+      line-height: 1.4;
+    }
+
+    /* ─── Palette Swatches ──────────────────────────── */
+    .palette-row {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0 24px;
+      flex-wrap: wrap;
+    }
+    .palette-swatch {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .palette-swatch:hover { transform: translateY(-2px); }
+    .palette-swatch.active .palette-bar {
+      box-shadow: 0 0 0 2px var(--accent), 0 0 16px rgba(139,92,246,0.3);
+    }
+    .palette-bar {
+      width: 48px;
+      height: 24px;
+      border-radius: 5px;
+      display: flex;
+      overflow: hidden;
+    }
+    .palette-bar span { flex: 1; }
+    .palette-name {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Props Table ───────────────────────────────── */
+    .props-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 16px 0 28px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .props-table th, .props-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+    .props-table th {
+      background: var(--bg-surface);
+      font-family: var(--sans);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .props-table td:first-child {
+      font-family: var(--mono);
+      color: var(--accent);
+      font-size: 12px;
+    }
+    .props-table td:nth-child(2) {
+      font-family: var(--mono);
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .props-table td:nth-child(3) {
+      color: var(--text-dim);
+    }
+    .props-table tr:last-child td { border-bottom: none; }
+
+    /* ─── Footer ────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0;
+      text-align: center;
+    }
+    footer p { color: var(--text-muted); font-size: 12px; }
+    footer a {
+      color: var(--text-dim);
+      text-decoration: none;
+      border-bottom: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    footer a:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ─── Download Banner ───────────────────────────── */
+    .download-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 10px 28px;
+      background: rgba(5,5,10,0.85);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+    }
+    .download-bar.visible { display: flex; }
+    .download-bar button {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .download-bar button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .download-bar button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    .download-bar button.primary:hover {
+      background: #7C3AED;
+    }
+    .download-bar span {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Responsive ────────────────────────────────── */
+    @media (max-width: 640px) {
+      .container { padding: 0 16px; }
+      .hero { padding: 140px 0 80px; }
+      section { padding: 48px 0; }
+      .mode-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Heatprint canvas overlay -->
+  <canvas id="heatCanvas"></canvas>
+
+  <!-- Top bar -->
+  <nav class="topbar">
+    <a href="#" class="topbar-logo">heatprint</a>
+    <div class="topbar-right">
+      <div class="point-counter">
+        <div class="dot"></div>
+        <span id="pointCount">recording... 0 points</span>
+      </div>
+      <button class="reveal-btn" id="revealBtn" onclick="toggleReveal()">Reveal</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <!-- Hero -->
+    <section class="hero" style="border: none;">
+      <div class="hero-eyebrow">Open Source npm Package</div>
+      <h1>Your interaction<br><em>portrait</em></h1>
+      <p class="hero-sub">Drop it on any page. It watches how people move, click, and scroll. Then turns it into art.</p>
+      <div class="hero-install" onclick="copyInstall()">
+        <span>npm install heatprint</span>
+        <span class="tag" id="copyTag">copy</span>
+      </div>
+      <p class="hero-hint">Move your cursor around. We're recording. Hit "Reveal" when you're ready.</p>
+    </section>
+
+    <!-- Quick Start -->
+    <section>
+      <h2>One component</h2>
+      <p>Wrap your app. Pick a mode. That's the whole API. It records silently and renders live. No backend, no accounts, no API keys. Everything stays in the browser.</p>
+<pre><span class="kw">import</span> { <span class="comp">Heatprint</span> } <span class="kw">from</span> <span class="str">'heatprint'</span>
+
+<span class="kw">function</span> <span class="fn">App</span>() {
+  <span class="kw">return</span> (
+    &lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"aurora"</span> <span class="prop">opacity</span>={<span class="num">0.6</span>}&gt;
+      &lt;<span class="comp">YourApp</span> /&gt;
+    &lt;/<span class="comp">Heatprint</span>&gt;
+  )
+}</pre>
+    </section>
+
+    <!-- Modes -->
+    <section id="modes">
+      <h2>Six modes, same data</h2>
+      <p>Every person's pattern is different. Every mode reveals something different about how they interact. Click a mode to see your own data rendered in that style.</p>
+
+      <div class="mode-grid">
+        <div class="mode-card active" onclick="switchMode('heat')" id="card-heat">
+          <canvas id="preview-heat" width="200" height="80"></canvas>
+          <h4>Heat</h4>
+          <p>Density gradient</p>
+        </div>
+        <div class="mode-card" onclick="switchMode('trails')" id="card-trails">
+          <canvas id="preview-trails" width="200" height="80"></canvas>
+          <h4>Trails</h4>
+          <p>Flowing particles</p>
+        </div>
+        <div class="mode-card" onclick="switchMode('constellation')" id="card-constellation">
+          <canvas id="preview-constellation" width="200" height="80"></canvas>
+          <h4>Constellation</h4>
+          <p>Star map</p>
+        </div>
+        <div class="mode-card" onclick="switchMode('flow')" id="card-flow">
+          <canvas id="preview-flow" width="200" height="80"></canvas>
+          <h4>Flow</h4>
+          <p>Vector field</p>
+        </div>
+        <div class="mode-card" onclick="switchMode('topography')" id="card-topography">
+          <canvas id="preview-topography" width="200" height="80"></canvas>
+          <h4>Topography</h4>
+          <p>Contour map</p>
+        </div>
+        <div class="mode-card" onclick="switchMode('aurora')" id="card-aurora">
+          <canvas id="preview-aurora" width="200" height="80"></canvas>
+          <h4>Aurora</h4>
+          <p>Light ribbons</p>
+        </div>
+      </div>
+
+<pre>&lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"heat"</span> /&gt;          <span class="cmt">// Classic density gradient</span>
+&lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"trails"</span> /&gt;        <span class="cmt">// Flowing particle trails</span>
+&lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"constellation"</span> /&gt; <span class="cmt">// Connected star map</span>
+&lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"flow"</span> /&gt;          <span class="cmt">// Wind-like flow field</span>
+&lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"topography"</span> /&gt;    <span class="cmt">// Contour elevation map</span>
+&lt;<span class="comp">Heatprint</span> <span class="prop">mode</span>=<span class="str">"aurora"</span> /&gt;        <span class="cmt">// Northern lights ribbons</span></pre>
+    </section>
+
+    <!-- Palettes -->
+    <section>
+      <h2>Palettes</h2>
+      <p>Eight built-in color palettes. Click one to change the current visualization. Or pass your own array of hex colors.</p>
+
+      <div class="palette-row" id="paletteRow"></div>
+
+<pre><span class="kw">import</span> { <span class="fn">PALETTES</span> } <span class="kw">from</span> <span class="str">'heatprint'</span>
+
+&lt;<span class="comp">Heatprint</span> <span class="prop">palette</span>={<span class="fn">PALETTES</span>.<span class="prop">ember</span>} /&gt;
+
+<span class="cmt">// Or custom</span>
+&lt;<span class="comp">Heatprint</span> <span class="prop">palette</span>={[<span class="str">'#000'</span>, <span class="str">'#1a0a2e'</span>, <span class="str">'#7b2ff7'</span>, <span class="str">'#c084fc'</span>]} /&gt;</pre>
+    </section>
+
+    <!-- Hook -->
+    <section>
+      <h2>The hook</h2>
+      <p>For full control, use <code>useHeatprint</code>. Get the raw data, trigger renders manually, export PNGs. Build your own UI around it.</p>
+
+<pre><span class="kw">import</span> { <span class="fn">useHeatprint</span> } <span class="kw">from</span> <span class="str">'heatprint'</span>
+
+<span class="kw">function</span> <span class="fn">CustomViz</span>() {
+  <span class="kw">const</span> {
+    canvasRef,
+    recording, start, stop, reset,
+    download, moveCount,
+  } = <span class="fn">useHeatprint</span>({
+    <span class="prop">mode</span>: <span class="str">'constellation'</span>,
+    <span class="prop">renderEvery</span>: <span class="num">50</span>,
+    <span class="prop">render</span>: { <span class="prop">intensity</span>: <span class="num">1.5</span> },
+  })
+
+  <span class="kw">return</span> (
+    &lt;<span class="tag">div</span>&gt;
+      &lt;<span class="tag">canvas</span> <span class="prop">ref</span>={canvasRef} /&gt;
+      &lt;<span class="tag">button</span> <span class="prop">onClick</span>={() =&gt; <span class="fn">download</span>(<span class="str">'heatprint.png'</span>)}&gt;
+        Save ({moveCount} points)
+      &lt;/<span class="tag">button</span>&gt;
+    &lt;/<span class="tag">div</span>&gt;
+  )
+}</pre>
+    </section>
+
+    <!-- Vanilla JS -->
+    <section>
+      <h2>No React? No problem</h2>
+      <p>Heatprint works without React. Use the tracker and renderers directly with any canvas.</p>
+
+<pre><span class="kw">import</span> { <span class="fn">InteractionTracker</span>, <span class="fn">render</span> } <span class="kw">from</span> <span class="str">'heatprint'</span>
+
+<span class="kw">const</span> tracker = <span class="kw">new</span> <span class="fn">InteractionTracker</span>()
+tracker.<span class="fn">start</span>()
+
+<span class="cmt">// Later...</span>
+<span class="kw">const</span> ctx = canvas.<span class="fn">getContext</span>(<span class="str">'2d'</span>)
+<span class="kw">const</span> data = tracker.<span class="fn">getData</span>()
+
+<span class="fn">render</span>(ctx, data, { <span class="prop">mode</span>: <span class="str">'flow'</span> })</pre>
+    </section>
+
+    <!-- How it works -->
+    <section>
+      <h2>How it works</h2>
+      <p>The tracker listens to <code>mousemove</code>, <code>click</code>, and <code>scroll</code> events. Coordinates get normalized to 0 through 1 so visualizations scale to any canvas size. Data stays in flat arrays with timestamps, so renderers can color by time and detect movement segments.</p>
+      <p>Each renderer interprets the data differently. The heat renderer builds a density grid and applies gaussian blur. The constellation renderer samples points and draws connections between nearby nodes. The aurora renderer fits catmull-rom splines through continuous paths and extrudes them into luminous ribbons with layered transparency.</p>
+      <p>All rendering happens on a single canvas in one <code>requestAnimationFrame</code> pass. No WebGL, no runtime dependencies, no external services. Under 8KB gzipped.</p>
+    </section>
+
+    <!-- Export -->
+    <section>
+      <h2>Export and share</h2>
+      <p>Every heatprint is unique to the person who made it. Export as PNG to share, or save the raw JSON data to render later.</p>
+
+<pre><span class="kw">import</span> { <span class="fn">downloadPNG</span>, <span class="fn">exportJSON</span> } <span class="kw">from</span> <span class="str">'heatprint'</span>
+
+<span class="cmt">// Save the image</span>
+<span class="fn">downloadPNG</span>(data, <span class="str">'heatprint.png'</span>, { <span class="prop">mode</span>: <span class="str">'aurora'</span> })
+
+<span class="cmt">// Save raw data for later</span>
+<span class="kw">const</span> json = <span class="fn">exportJSON</span>(data)
+localStorage.<span class="fn">setItem</span>(<span class="str">'heatprint'</span>, json)</pre>
+    </section>
+
+    <!-- Props -->
+    <section>
+      <h2>Props</h2>
+      <table class="props-table">
+        <thead><tr><th>Prop</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>mode</td><td>'heat'</td><td>Visualization: heat, trails, constellation, flow, topography, aurora</td></tr>
+          <tr><td>recording</td><td>true</td><td>Whether to record interactions</td></tr>
+          <tr><td>live</td><td>true</td><td>Re-render as data arrives</td></tr>
+          <tr><td>opacity</td><td>0.8</td><td>Canvas opacity (0-1)</td></tr>
+          <tr><td>palette</td><td>plasma</td><td>Array of hex colors</td></tr>
+          <tr><td>intensity</td><td>1</td><td>Visualization intensity (0.1-5)</td></tr>
+          <tr><td>blur</td><td>40</td><td>Blur radius for heat mode</td></tr>
+          <tr><td>particles</td><td>2000</td><td>Particle count for trails and flow</td></tr>
+          <tr><td>showClicks</td><td>true</td><td>Render click markers</td></tr>
+          <tr><td>clickStyle</td><td>'ring'</td><td>ring, burst, dot, or ripple</td></tr>
+          <tr><td>grain</td><td>0.03</td><td>Film grain overlay (0-1)</td></tr>
+          <tr><td>background</td><td>#000000</td><td>Background color</td></tr>
+          <tr><td>blendMode</td><td>'normal'</td><td>CSS mix-blend-mode</td></tr>
+          <tr><td>onData</td><td></td><td>Callback with interaction data</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Disclaimer -->
+    <section>
+      <h2>Disclaimer</h2>
+      <p>Experimental, open-source software. Provided as-is with no warranties or guarantees of any kind. DYOR. Use at your own risk.</p>
+      <p>Heatprint is a client-side tool. It does not transmit, store, or collect any user data externally. No analytics servers, no third-party calls, no cookies. All interaction data lives exclusively in the browser and is discarded when the page closes. Nothing leaves the device.</p>
+      <p>The author assumes zero liability for any issues, damages, or consequences arising from the use of this software. By using heatprint, you accept full responsibility for how you integrate and deploy it.</p>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>Built by 0xDragoon. Open source under MIT. Experimental software. DYOR.</p>
+    </footer>
+  </div>
+
+  <!-- Download bar (shown when revealed) -->
+  <div class="download-bar" id="downloadBar">
+    <span id="dlInfo">Your heatprint</span>
+    <button onclick="downloadHeatprint()">Download PNG</button>
+    <button onclick="toggleReveal()">Hide</button>
+  </div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// EMBEDDED HEATPRINT ENGINE (self-contained for the landing page)
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Palettes ──────────────────────────────────────────────
+const PALETTES = {
+  ember:    ['#1a0a00','#4a1500','#8B2500','#CD3700','#FF4500','#FF6B3D','#FFAB76','#FFD4B8'],
+  ocean:    ['#000814','#001D3D','#003566','#005B96','#0077B6','#00B4D8','#48CAE4','#90E0EF'],
+  aurora:   ['#0B0C10','#1A1B2E','#2C1654','#4A1A8A','#6B2FA0','#8B5CF6','#A78BFA','#C4B5FD'],
+  forest:   ['#0A1F0A','#132A13','#1A4D2E','#27704B','#31A060','#3DDC84','#6EE7A0','#A7F3D0'],
+  infrared: ['#000000','#1A0000','#3D0000','#6B0000','#9B0000','#CC0000','#FF0000','#FF4444'],
+  plasma:   ['#0D0887','#3B049A','#7201A8','#A62098','#CC4778','#E96B5D','#F89441','#FDC328'],
+  glacier:  ['#0A0A1A','#0F1B3D','#142E5E','#1B4482','#2563EB','#60A5FA','#93C5FD','#DBEAFE'],
+  thermal:  ['#000004','#1B0C42','#4A0C6B','#781C81','#A52C7A','#CF4446','#ED721C','#FCFFA4'],
+};
+
+let currentMode = 'heat';
+let currentPalette = PALETTES.plasma;
+let currentPaletteName = 'plasma';
+let revealed = false;
+
+// ─── Tracker ───────────────────────────────────────────────
+const moves = [];
+const clicks = [];
+let lastMoveTime = 0;
+const startedAt = Date.now();
+
+document.addEventListener('mousemove', (e) => {
+  const now = Date.now();
+  if (now - lastMoveTime < 16) return;
+  lastMoveTime = now;
+  moves.push({
+    x: e.clientX / window.innerWidth,
+    y: (e.clientY + window.scrollY) / document.documentElement.scrollHeight,
+    t: now - startedAt,
+  });
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  const now = Date.now();
+  if (now - lastMoveTime < 16) return;
+  lastMoveTime = now;
+  const touch = e.touches[0];
+  moves.push({
+    x: touch.clientX / window.innerWidth,
+    y: (touch.clientY + window.scrollY) / document.documentElement.scrollHeight,
+    t: now - startedAt,
+  });
+}, { passive: true });
+
+let mouseDownAt = 0;
+document.addEventListener('mousedown', (e) => { mouseDownAt = Date.now(); });
+document.addEventListener('mouseup', (e) => {
+  clicks.push({
+    x: e.clientX / window.innerWidth,
+    y: (e.clientY + window.scrollY) / document.documentElement.scrollHeight,
+    t: mouseDownAt - startedAt,
+    duration: Date.now() - mouseDownAt,
+  });
+});
+
+function getData() {
+  return {
+    moves, clicks, scrolls: [],
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    docHeight: document.documentElement.scrollHeight,
+    duration: Date.now() - startedAt,
+    startedAt,
+  };
+}
+
+// Update counter
+setInterval(() => {
+  const el = document.getElementById('pointCount');
+  el.textContent = `recording... ${moves.length} points`;
+}, 500);
+
+// ─── Render Utilities ──────────────────────────────────────
+function lerp(a,b,t){ return a+(b-a)*t; }
+function clamp(v,min,max){ return Math.min(Math.max(v,min),max); }
+function dist(x1,y1,x2,y2){ return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
+function hexToRgb(hex){ const c=hex.replace('#',''); return {r:parseInt(c.slice(0,2),16),g:parseInt(c.slice(2,4),16),b:parseInt(c.slice(4,6),16)}; }
+function sampleP(pal,t){
+  const c=clamp(t,0,1),i=c*(pal.length-1),lo=Math.floor(i),hi=Math.min(lo+1,pal.length-1),f=i-lo;
+  const a=hexToRgb(pal[lo]),b=hexToRgb(pal[hi]);
+  return `rgb(${Math.round(lerp(a.r,b.r,f))},${Math.round(lerp(a.g,b.g,f))},${Math.round(lerp(a.b,b.b,f))})`;
+}
+function samplePA(pal,t,alpha){
+  const c=clamp(t,0,1),i=c*(pal.length-1),lo=Math.floor(i),hi=Math.min(lo+1,pal.length-1),f=i-lo;
+  const a=hexToRgb(pal[lo]),b=hexToRgb(pal[hi]);
+  return `rgba(${Math.round(lerp(a.r,b.r,f))},${Math.round(lerp(a.g,b.g,f))},${Math.round(lerp(a.b,b.b,f))},${alpha})`;
+}
+function seeded(s){return()=>{s=(s*1664525+1013904223)&0xffffffff;return(s>>>0)/0xffffffff;};}
+
+function addGrain(ctx,w,h,amt){
+  if(amt<=0)return;
+  const d=ctx.getImageData(0,0,w,h),p=d.data,a=amt*25;
+  for(let i=0;i<p.length;i+=4){const n=(Math.random()-0.5)*a;p[i]=clamp(p[i]+n,0,255);p[i+1]=clamp(p[i+1]+n,0,255);p[i+2]=clamp(p[i+2]+n,0,255);}
+  ctx.putImageData(d,0,0);
+}
+
+// ─── HEAT Renderer ─────────────────────────────────────────
+function renderHeat(ctx,data,pal,w,h){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+  if(data.moves.length<3)return;
+  const gs=4,gw=Math.ceil(w/gs),gh=Math.ceil(h/gs);
+  const grid=new Float32Array(gw*gh);let mx=0;
+  for(const p of data.moves){const gx=Math.floor(p.x*gw),gy=Math.floor(p.y*gh);if(gx>=0&&gx<gw&&gy>=0&&gy<gh){grid[gy*gw+gx]+=1;if(grid[gy*gw+gx]>mx)mx=grid[gy*gw+gx];}}
+  if(mx>0)for(let i=0;i<grid.length;i++)grid[i]/=mx;
+  // blur
+  function blur1d(g,w,h,r){const o=new Float32Array(w*h),k=[];let ks=0;for(let i=-r;i<=r;i++){const v=Math.exp(-(i*i)/(2*(r/3)*(r/3)));k.push(v);ks+=v;}for(let i=0;i<k.length;i++)k[i]/=ks;const t=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0;for(let ki=0;ki<k.length;ki++){s+=g[y*w+clamp(x+ki-r,0,w-1)]*k[ki];}t[y*w+x]=s;}for(let x=0;x<w;x++)for(let y=0;y<h;y++){let s=0;for(let ki=0;ki<k.length;ki++){s+=t[clamp(y+ki-r,0,h-1)*w+x]*k[ki];}o[y*w+x]=s;}return o;}
+  let blurred=blur1d(grid,gw,gh,3);blurred=blur1d(blurred,gw,gh,3);
+  const id=ctx.createImageData(gw,gh);
+  for(let i=0;i<blurred.length;i++){const v=clamp(blurred[i]*1.5,0,1);if(v<0.01)continue;const c=sampleP(pal,v).match(/\d+/g);const j=i*4;id.data[j]=+c[0];id.data[j+1]=+c[1];id.data[j+2]=+c[2];id.data[j+3]=Math.floor(v*255);}
+  const tc=document.createElement('canvas');tc.width=gw;tc.height=gh;tc.getContext('2d').putImageData(id,0,0);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.globalCompositeOperation='lighter';ctx.drawImage(tc,0,0,w,h);ctx.globalCompositeOperation='source-over';
+  addGrain(ctx,w,h,0.025);
+}
+
+// ─── TRAILS Renderer ───────────────────────────────────────
+function renderTrails(ctx,data,pal,w,h){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+  if(data.moves.length<3)return;
+  const rng=seeded(42);
+  const segs=[];let cur=[];
+  for(let i=0;i<data.moves.length;i++){const p=data.moves[i];if(cur.length>0&&p.t-data.moves[i-1].t>300){if(cur.length>2)segs.push(cur);cur=[];}cur.push({x:p.x*w,y:p.y*h,t:p.t});}
+  if(cur.length>2)segs.push(cur);
+  ctx.lineCap='round';
+  for(const seg of segs){
+    for(let pass=0;pass<3;pass++){const lw=pass===0?3:pass===1?1.5:0.5;const al=pass===0?0.08:pass===1?0.16:0.3;
+    ctx.beginPath();ctx.moveTo(seg[0].x,seg[0].y);
+    for(let i=1;i<seg.length-1;i++){const xc=(seg[i].x+seg[i+1].x)/2,yc=(seg[i].y+seg[i+1].y)/2;ctx.quadraticCurveTo(seg[i].x,seg[i].y,xc,yc);}
+    const t=clamp(seg[seg.length-1].t/(data.duration||1),0,1);ctx.strokeStyle=samplePA(pal,0.3+t*0.5,al*0.6);ctx.lineWidth=lw;ctx.stroke();}
+    const pc=Math.min(Math.floor(1500*(seg.length/data.moves.length)),1500);
+    for(let p=0;p<pc;p++){const idx=Math.floor(rng()*(seg.length-1));const pt=seg[idx],nx=seg[Math.min(idx+1,seg.length-1)];const dx=nx.x-pt.x,dy=nx.y-pt.y,ln=Math.sqrt(dx*dx+dy*dy);if(ln<0.5)continue;const nxx=-dy/ln,nyy=dx/ln,off=(rng()-0.5)*25;
+    const px=pt.x+nxx*off,py=pt.y+nyy*off;ctx.beginPath();ctx.arc(px,py,0.4+rng()*1.5,0,Math.PI*2);const t=clamp(pt.t/(data.duration||1),0,1);ctx.fillStyle=samplePA(pal,0.3+t*0.6,0.1+rng()*0.3);ctx.fill();}
+  }
+  addGrain(ctx,w,h,0.02);
+}
+
+// ─── CONSTELLATION Renderer ────────────────────────────────
+function renderConst(ctx,data,pal,w,h){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+  if(data.moves.length<3)return;
+  const rng=seeded(77);
+  const rate=Math.max(1,Math.floor(data.moves.length/600));
+  const stars=[];
+  for(let i=0;i<data.moves.length;i+=rate){const p=data.moves[i];stars.push({x:p.x*w,y:p.y*h,t:p.t,s:0.5+rng()*2,b:0.3+rng()*0.7});}
+  for(const c of data.clicks){stars.push({x:c.x*w,y:c.y*h,t:c.t,s:3+(c.duration/200)*3,b:1});}
+  // bg dust
+  for(let i=0;i<150;i++){ctx.beginPath();ctx.arc(rng()*w,rng()*h,0.3+rng()*0.6,0,Math.PI*2);ctx.fillStyle=`rgba(255,255,255,${0.02+rng()*0.05})`;ctx.fill();}
+  // connections
+  const cd=Math.min(w,h)*0.07;ctx.lineCap='round';
+  for(let i=0;i<stars.length;i++){const a=stars[i];for(let j=i+1;j<stars.length;j++){const b=stars[j];const d=dist(a.x,a.y,b.x,b.y);if(d<cd&&d>2){const al=(1-d/cd)*0.2;const ta=clamp(((a.t+b.t)/2)/(data.duration||1),0,1);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=samplePA(pal,0.3+ta*0.5,al);ctx.lineWidth=0.5;ctx.stroke();}}}
+  // stars
+  for(const s of stars){const t=clamp(s.t/(data.duration||1),0,1);if(s.b>0.6){const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,s.s*5);g.addColorStop(0,samplePA(pal,0.5+t*0.4,0.12*s.b));g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(s.x,s.y,s.s*5,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();}
+  ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fillStyle=samplePA(pal,0.5+t*0.5,0.5+s.b*0.5);ctx.fill();
+  if(s.s>2){ctx.beginPath();ctx.arc(s.x,s.y,s.s*0.35,0,Math.PI*2);ctx.fillStyle=`rgba(255,255,255,${s.b*0.5})`;ctx.fill();}}
+  addGrain(ctx,w,h,0.025);
+}
+
+// ─── FLOW Renderer ─────────────────────────────────────────
+function renderFlow(ctx,data,pal,w,h){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+  if(data.moves.length<5)return;
+  const rng=seeded(123);const gs=20,cols=Math.ceil(w/gs),rows=Math.ceil(h/gs);
+  const ag=new Float32Array(cols*rows),mg=new Float32Array(cols*rows),cg=new Float32Array(cols*rows);
+  for(let i=1;i<data.moves.length;i++){const p=data.moves[i-1],c=data.moves[i];const dx=(c.x-p.x)*w,dy=(c.y-p.y)*h;const col=Math.floor(c.x*w/gs),row=Math.floor(c.y*h/gs);if(col>=0&&col<cols&&row>=0&&row<rows){const idx=row*cols+col;ag[idx]+=Math.atan2(dy,dx);mg[idx]+=Math.sqrt(dx*dx+dy*dy);cg[idx]+=1;}}
+  for(let i=0;i<ag.length;i++){if(cg[i]>0){ag[i]/=cg[i];mg[i]/=cg[i];}else{ag[i]=rng()*Math.PI*2;mg[i]=0.1;}}
+  ctx.lineCap='round';
+  for(let p=0;p<1500;p++){let px,py;if(rng()<0.7&&data.moves.length>0){const pt=data.moves[Math.floor(rng()*data.moves.length)];px=pt.x*w+(rng()-0.5)*40;py=pt.y*h+(rng()-0.5)*40;}else{px=rng()*w;py=rng()*h;}
+  ctx.beginPath();ctx.moveTo(px,py);let pa=0;const steps=Math.floor(50*(0.3+rng()*0.7));
+  for(let s=0;s<steps;s++){const col=Math.floor(px/gs),row=Math.floor(py/gs);if(col<0||col>=cols||row<0||row>=rows)break;const idx=row*cols+col;let a=ag[idx]+(rng()-0.5)*0.5;a=pa+(a-pa)*0.4;pa=a;const st=2*(0.5+mg[idx]*0.5)*0.5;px+=Math.cos(a)*st;py+=Math.sin(a)*st;ctx.lineTo(px,py);}
+  ctx.strokeStyle=samplePA(pal,0.2+rng()*0.6,0.03+rng()*0.06);ctx.lineWidth=0.5+rng()*0.8;ctx.stroke();}
+  addGrain(ctx,w,h,0.02);
+}
+
+// ─── TOPOGRAPHY Renderer ───────────────────────────────────
+function renderTopo(ctx,data,pal,w,h){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+  if(data.moves.length<5)return;
+  const sc=3,gw=Math.ceil(w/sc),gh=Math.ceil(h/sc);
+  const grid=new Float32Array(gw*gh);let mx=0;
+  for(const p of data.moves){const gx=Math.floor(p.x*gw),gy=Math.floor(p.y*gh);if(gx>=0&&gx<gw&&gy>=0&&gy<gh){grid[gy*gw+gx]+=1;if(grid[gy*gw+gx]>mx)mx=grid[gy*gw+gx];}}
+  if(mx>0)for(let i=0;i<grid.length;i++)grid[i]/=mx;
+  function blur1d(g,w,h,r){const o=new Float32Array(w*h),k=[];let ks=0;for(let i=-r;i<=r;i++){const v=Math.exp(-(i*i)/(2*(r/3)*(r/3)));k.push(v);ks+=v;}for(let i=0;i<k.length;i++)k[i]/=ks;const t=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0;for(let ki=0;ki<k.length;ki++){s+=g[y*w+clamp(x+ki-r,0,w-1)]*k[ki];}t[y*w+x]=s;}for(let x=0;x<w;x++)for(let y=0;y<h;y++){let s=0;for(let ki=0;ki<k.length;ki++){s+=t[clamp(y+ki-r,0,h-1)*w+x]*k[ki];}o[y*w+x]=s;}return o;}
+  let b=blur1d(grid,gw,gh,5);b=blur1d(b,gw,gh,4);
+  const levels=10;ctx.lineCap='round';
+  for(let lv=1;lv<=levels;lv++){const thresh=lv/levels*0.8;const pt=lv/levels;
+  ctx.strokeStyle=samplePA(pal,0.2+pt*0.7,(0.12+pt*0.3)*0.6);ctx.lineWidth=lv===levels?1.2:0.6;
+  for(let y=0;y<gh-1;y++){let inC=false;for(let x=0;x<gw-1;x++){const v=b[y*gw+x]>=thresh;if(v&&!inC){inC=true;var sx=x;}else if(!v&&inC){inC=false;ctx.beginPath();ctx.moveTo(sx*sc,y*sc);ctx.lineTo(x*sc,y*sc);ctx.stroke();}}}}
+  // peaks fill
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){const v=b[y*gw+x];if(v>0.4){ctx.fillStyle=samplePA(pal,0.6+v*0.3,(v-0.4)*0.12);ctx.fillRect(x*sc,y*sc,sc,sc);}}
+  ctx.restore();
+  addGrain(ctx,w,h,0.025);
+}
+
+// ─── AURORA Renderer ───────────────────────────────────────
+function renderAurora(ctx,data,pal,w,h){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+  if(data.moves.length<5)return;
+  const rng=seeded(99);
+  const segs=[];let cur=[];
+  for(let i=0;i<data.moves.length;i++){const p=data.moves[i];if(cur.length>0&&p.t-data.moves[i-1].t>200){if(cur.length>4)segs.push(cur);cur=[];}cur.push({x:p.x*w,y:p.y*h,t:p.t});}
+  if(cur.length>4)segs.push(cur);
+
+  function catmull(pts,det=3){if(pts.length<3)return pts;const r=[];for(let i=0;i<pts.length-1;i++){const p0=pts[Math.max(i-1,0)],p1=pts[i],p2=pts[Math.min(i+1,pts.length-1)],p3=pts[Math.min(i+2,pts.length-1)];for(let j=0;j<det;j++){const t=j/det,t2=t*t,t3=t2*t;r.push({x:0.5*(2*p1.x+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),y:0.5*(2*p1.y+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3),t:lerp(p1.t,p2.t,t)});}}return r;}
+
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  for(const seg of segs){
+    let sampled=seg;if(seg.length>150){const step=Math.floor(seg.length/150);sampled=seg.filter((_,i)=>i%step===0);}
+    const smooth=catmull(sampled,3);if(smooth.length<4)continue;
+    for(let layer=0;layer<4;layer++){const rw=(4-layer)*10;const al=(0.008+layer*0.015)*0.6;
+    ctx.beginPath();
+    for(let i=0;i<smooth.length;i++){const p=smooth[i],nx=smooth[Math.min(i+1,smooth.length-1)];const dx=nx.x-p.x,dy=nx.y-p.y,ln=Math.sqrt(dx*dx+dy*dy);const nxx=ln>0?-dy/ln:0,nyy=ln>0?dx/ln:0;const wave=Math.sin(i*0.08+layer*1.5)*rw*0.3;const ux=p.x+nxx*(rw+wave)*0.5,uy=p.y+nyy*(rw+wave)*0.5;if(i===0)ctx.moveTo(ux,uy);else ctx.lineTo(ux,uy);}
+    for(let i=smooth.length-1;i>=0;i--){const p=smooth[i],nx=smooth[Math.min(i+1,smooth.length-1)];const dx=nx.x-p.x,dy=nx.y-p.y,ln=Math.sqrt(dx*dx+dy*dy);const nxx=ln>0?-dy/ln:0,nyy=ln>0?dx/ln:0;const wave=Math.sin(i*0.08+layer*1.5)*rw*0.3;const lx=p.x-nxx*(rw+wave)*0.5,ly=p.y-nyy*(rw+wave)*0.5;ctx.lineTo(lx,ly);}
+    ctx.closePath();
+    const p0=smooth[0],pN=smooth[smooth.length-1],grad=ctx.createLinearGradient(p0.x,p0.y,pN.x,pN.y);const t0=clamp(p0.t/(data.duration||1),0,1),tN=clamp(pN.t/(data.duration||1),0,1);
+    grad.addColorStop(0,samplePA(pal,0.2+t0*0.4,al));grad.addColorStop(0.4,samplePA(pal,0.4+t0*0.3,al*1.4));grad.addColorStop(0.7,samplePA(pal,0.5+tN*0.3,al*1.1));grad.addColorStop(1,samplePA(pal,0.3+tN*0.4,al*0.4));
+    ctx.fillStyle=grad;ctx.fill();}
+    // core line
+    ctx.beginPath();ctx.moveTo(smooth[0].x,smooth[0].y);for(let i=1;i<smooth.length;i++)ctx.lineTo(smooth[i].x,smooth[i].y);
+    ctx.strokeStyle=samplePA(pal,0.6,0.04);ctx.lineWidth=0.8;ctx.stroke();
+  }
+  ctx.restore();
+  addGrain(ctx,w,h,0.02);
+}
+
+// ─── Dispatcher ────────────────────────────────────────────
+const RENDERERS = { heat:renderHeat, trails:renderTrails, constellation:renderConst, flow:renderFlow, topography:renderTopo, aurora:renderAurora };
+
+function renderMain(){
+  const canvas = document.getElementById('heatCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const w = window.innerWidth, h = window.innerHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  canvas.style.width = w+'px'; canvas.style.height = h+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const data = getData();
+  RENDERERS[currentMode](ctx, data, currentPalette, w, h);
+}
+
+// ─── Mode Previews ─────────────────────────────────────────
+function renderPreviews(){
+  const data = getData();
+  if(data.moves.length < 10) return;
+  for(const mode of Object.keys(RENDERERS)){
+    const c = document.getElementById('preview-'+mode);
+    if(!c) continue;
+    const ctx = c.getContext('2d');
+    const w = c.width, h = c.height;
+    RENDERERS[mode](ctx, data, currentPalette, w, h);
+  }
+}
+
+// ─── Controls ──────────────────────────────────────────────
+function toggleReveal(){
+  revealed = !revealed;
+  const canvas = document.getElementById('heatCanvas');
+  const btn = document.getElementById('revealBtn');
+  const dl = document.getElementById('downloadBar');
+  const counter = document.getElementById('pointCount');
+
+  if(revealed){
+    renderMain();
+    canvas.classList.add('visible');
+    btn.classList.add('active');
+    btn.textContent = 'Hide';
+    dl.classList.add('visible');
+    counter.textContent = `${moves.length} points captured`;
+    renderPreviews();
+  } else {
+    canvas.classList.remove('visible');
+    btn.classList.remove('active');
+    btn.textContent = 'Reveal';
+    dl.classList.remove('visible');
+  }
+}
+
+function switchMode(mode){
+  currentMode = mode;
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('card-'+mode)?.classList.add('active');
+  if(revealed) renderMain();
+}
+
+function downloadHeatprint(){
+  const canvas = document.getElementById('heatCanvas');
+  const link = document.createElement('a');
+  link.download = `heatprint-${currentMode}.png`;
+  link.href = canvas.toDataURL('image/png');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function copyInstall(){
+  navigator.clipboard.writeText('npm install heatprint').then(()=>{
+    const tag = document.getElementById('copyTag');
+    tag.textContent='copied!';tag.style.color='#8B5CF6';
+    setTimeout(()=>{tag.textContent='copy';tag.style.color='';},2000);
+  });
+}
+
+// ─── Build Palette Swatches ────────────────────────────────
+(function buildPalettes(){
+  const row = document.getElementById('paletteRow');
+  for(const [name, pal] of Object.entries(PALETTES)){
+    const swatch = document.createElement('div');
+    swatch.className = 'palette-swatch' + (name === currentPaletteName ? ' active' : '');
+    swatch.id = 'pal-' + name;
+    swatch.onclick = () => {
+      currentPalette = pal;
+      currentPaletteName = name;
+      document.querySelectorAll('.palette-swatch').forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+      if(revealed){ renderMain(); renderPreviews(); }
+    };
+    const bar = document.createElement('div');
+    bar.className = 'palette-bar';
+    // show middle 4 colors
+    const sample = [pal[2],pal[3],pal[5],pal[6]];
+    sample.forEach(c => { const s = document.createElement('span'); s.style.background=c; bar.appendChild(s); });
+    const label = document.createElement('div');
+    label.className = 'palette-name';
+    label.textContent = name;
+    swatch.appendChild(bar);
+    swatch.appendChild(label);
+    row.appendChild(swatch);
+  }
+})();
+
+// ─── Auto re-render when revealed ──────────────────────────
+let lastRenderCount = 0;
+setInterval(() => {
+  if(revealed && moves.length - lastRenderCount > 60){
+    lastRenderCount = moves.length;
+    renderMain();
+  }
+}, 1000);
+
+// Resize handler
+window.addEventListener('resize', () => { if(revealed) renderMain(); });
+</script>
+</body>
+</html>
