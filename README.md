@@ -1,4 +1,4 @@
-# heatprint
+# Heatprint
 
 > Experimental software. DYOR. Use at your own risk. No data leaves the browser.
 
