@@ -2,22 +2,18 @@
   "name": "heatprint",
   "version": "1.0.0",
   "description": "Turn user interactions into generative art. Cursor trails, heat maps, constellation maps, flow fields. Drop it on any page.",
-  "main": "dist/index.cjs.js",
-  "module": "dist/index.esm.js",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
-  },
-  "bin": {
-    "heatprint": "./bin/cli.js"
   },
   "files": [
     "dist",
-    "bin",
     "README.md",
     "LICENSE"
   ],
@@ -62,7 +58,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/Dragoon0x/heatprint.git"
   },
-  "homepage": ""
+  "homepage": "https://dragoon0x.github.io/heatprint/"
 }
