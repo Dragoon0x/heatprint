@@ -1,37 +1,13 @@
-// ─── Components ──────────────────────────────────────────────
-export { Heatprint } from './components/Heatprint'
-export { useHeatprint } from './components/useHeatprint'
+export { Heatprint } from './core/heatprint'
+export { Tracker } from './core/tracker'
+export { Renderer } from './core/renderer'
+export { PALETTES, getPalette, interpolateColor, hexToRgb } from './utils/palettes'
 
-// ─── Core ────────────────────────────────────────────────────
-export { InteractionTracker } from './core/tracker'
-
-// ─── Renderers ───────────────────────────────────────────────
-export {
-  render,
-  renderToCanvas,
-  exportPNG,
-  downloadPNG,
-  exportJSON,
-  importJSON,
-  renderHeat,
-  renderTrails,
-  renderConstellation,
-  renderFlow,
-  renderTopography,
-  renderAurora,
-} from './renderers'
-
-// ─── Types ───────────────────────────────────────────────────
 export type {
-  InteractionData,
-  Point,
-  ClickEvent,
-  ScrollFrame,
+  Interaction,
+  InteractionType,
   RenderMode,
-  RenderOptions,
-  TrackerOptions,
-  HeatprintProps,
+  ColorPalette,
+  HeatprintConfig,
+  HeatprintStats,
 } from './types'
-
-// ─── Constants ───────────────────────────────────────────────
-export { PALETTES, DEFAULT_PALETTE, DEFAULTS } from './types'

@@ -1,209 +1,222 @@
-import type { InteractionData, Point, ClickEvent, ScrollFrame, TrackerOptions } from '../types'
-import { DEFAULTS } from '../types'
+// ═══════════════════════════════════════════
+// HEATPRINT — Interaction Tracker
+// ═══════════════════════════════════════════
 
-/**
- * InteractionTracker
- *
- * Silently records cursor movement, clicks, and scroll depth.
- * All coordinates are normalized to 0-1 by default.
- * Lightweight. No DOM injection. No visual output.
- */
-export class InteractionTracker {
-  private moves: Point[] = []
-  private clicks: ClickEvent[] = []
-  private scrolls: ScrollFrame[] = []
-  private startedAt = 0
-  private isRecording = false
+import type { Interaction, InteractionType, HeatprintConfig } from '../types'
 
-  private options: Required<TrackerOptions>
-  private target: HTMLElement | Document
-
-  // Throttle state
+export class Tracker {
+  private interactions: Interaction[] = []
+  private config: HeatprintConfig
+  private active = false
   private lastMoveTime = 0
+  private lastMoveX = 0
+  private lastMoveY = 0
+  private hoverTimer: ReturnType<typeof setTimeout> | null = null
+  private startTime = 0
 
-  // Click duration tracking
-  private mouseDownTime = 0
-  private mouseDownPos = { x: 0, y: 0 }
+  private boundClick: ((e: MouseEvent) => void) | null = null
+  private boundMove: ((e: MouseEvent) => void) | null = null
+  private boundScroll: (() => void) | null = null
+  private boundTouch: ((e: TouchEvent) => void) | null = null
 
-  // Scroll state
-  private lastScrollY = 0
-  private lastScrollTime = 0
-
-  // Bound handlers (for cleanup)
-  private boundMove: (e: MouseEvent | TouchEvent) => void
-  private boundDown: (e: MouseEvent | TouchEvent) => void
-  private boundUp: (e: MouseEvent | TouchEvent) => void
-  private boundScroll: () => void
-
-  constructor(opts: Partial<TrackerOptions> = {}) {
-    this.options = {
-      throttle: opts.throttle ?? DEFAULTS.throttle,
-      maxPoints: opts.maxPoints ?? DEFAULTS.maxPoints,
-      trackScroll: opts.trackScroll ?? true,
-      trackClicks: opts.trackClicks ?? true,
-      trackMoves: opts.trackMoves ?? true,
-      target: opts.target ?? null,
-      normalize: opts.normalize ?? true,
-    }
-
-    this.target = this.options.target || document
-
-    this.boundMove = this.handleMove.bind(this)
-    this.boundDown = this.handleDown.bind(this)
-    this.boundUp = this.handleUp.bind(this)
-    this.boundScroll = this.handleScroll.bind(this)
+  constructor(config: HeatprintConfig) {
+    this.config = config
   }
 
-  /** Start recording interactions */
   start(): void {
-    if (this.isRecording) return
-    this.isRecording = true
-    this.startedAt = Date.now()
-    this.lastScrollY = window.scrollY
+    if (this.active || typeof window === 'undefined') return
+    this.active = true
+    this.startTime = Date.now()
 
-    const t = this.target
-    if (this.options.trackMoves) {
-      t.addEventListener('mousemove', this.boundMove as EventListener, { passive: true })
-      t.addEventListener('touchmove', this.boundMove as EventListener, { passive: true })
+    if (this.config.trackClicks !== false) {
+      this.boundClick = (e: MouseEvent) => this.onClick(e)
+      window.addEventListener('click', this.boundClick, { passive: true })
     }
-    if (this.options.trackClicks) {
-      t.addEventListener('mousedown', this.boundDown as EventListener, { passive: true })
-      t.addEventListener('mouseup', this.boundUp as EventListener, { passive: true })
-      t.addEventListener('touchstart', this.boundDown as EventListener, { passive: true })
-      t.addEventListener('touchend', this.boundUp as EventListener, { passive: true })
+
+    if (this.config.trackMoves !== false) {
+      this.boundMove = (e: MouseEvent) => this.onMove(e)
+      window.addEventListener('mousemove', this.boundMove, { passive: true })
     }
-    if (this.options.trackScroll) {
+
+    if (this.config.trackScrolls !== false) {
+      this.boundScroll = () => this.onScroll()
       window.addEventListener('scroll', this.boundScroll, { passive: true })
     }
+
+    this.boundTouch = (e: TouchEvent) => this.onTouch(e)
+    window.addEventListener('touchstart', this.boundTouch, { passive: true })
   }
 
-  /** Stop recording */
   stop(): void {
-    if (!this.isRecording) return
-    this.isRecording = false
-
-    const t = this.target
-    t.removeEventListener('mousemove', this.boundMove as EventListener)
-    t.removeEventListener('touchmove', this.boundMove as EventListener)
-    t.removeEventListener('mousedown', this.boundDown as EventListener)
-    t.removeEventListener('mouseup', this.boundUp as EventListener)
-    t.removeEventListener('touchstart', this.boundDown as EventListener)
-    t.removeEventListener('touchend', this.boundUp as EventListener)
-    window.removeEventListener('scroll', this.boundScroll)
+    this.active = false
+    if (this.boundClick) window.removeEventListener('click', this.boundClick)
+    if (this.boundMove) window.removeEventListener('mousemove', this.boundMove)
+    if (this.boundScroll) window.removeEventListener('scroll', this.boundScroll)
+    if (this.boundTouch) window.removeEventListener('touchstart', this.boundTouch)
+    if (this.hoverTimer) clearTimeout(this.hoverTimer)
   }
 
-  /** Clear all recorded data */
-  reset(): void {
-    this.moves = []
-    this.clicks = []
-    this.scrolls = []
-    this.startedAt = Date.now()
+  isActive(): boolean { return this.active }
+
+  getInteractions(): Interaction[] { return this.interactions }
+
+  getInteractionsByType(type: InteractionType): Interaction[] {
+    return this.interactions.filter(i => i.type === type)
   }
 
-  /** Get a snapshot of all recorded data */
-  getData(): InteractionData {
+  clear(): void { this.interactions = [] }
+
+  getStats() {
+    const clicks = this.interactions.filter(i => i.type === 'click').length
+    const moves = this.interactions.filter(i => i.type === 'move').length
+    const scrolls = this.interactions.filter(i => i.type === 'scroll').length
+    const hovers = this.interactions.filter(i => i.type === 'hover').length
+
+    // Find hotspots (cluster centers)
+    const hotspots = this.findHotspots()
+
+    // Average velocity
+    const velocities = this.interactions.filter(i => i.velocity > 0).map(i => i.velocity)
+    const avgVelocity = velocities.length > 0
+      ? velocities.reduce((s, v) => s + v, 0) / velocities.length : 0
+
     return {
-      moves: [...this.moves],
-      clicks: [...this.clicks],
-      scrolls: [...this.scrolls],
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      },
-      docHeight: document.documentElement.scrollHeight,
-      duration: Date.now() - this.startedAt,
-      startedAt: this.startedAt,
+      totalInteractions: this.interactions.length,
+      clicks, moves, scrolls, hovers,
+      hotspots,
+      averageVelocity: Math.round(avgVelocity * 100) / 100,
+      duration: Date.now() - this.startTime,
     }
   }
 
-  /** Get raw move count */
-  get moveCount(): number {
-    return this.moves.length
+  // Add interaction programmatically (for replays, imports)
+  addInteraction(interaction: Interaction): void {
+    this.interactions.push(interaction)
+    this.trimIfNeeded()
   }
 
-  /** Get raw click count */
-  get clickCount(): number {
-    return this.clicks.length
-  }
-
-  // ─── Private Handlers ────────────────────────────────
-
-  private getCoords(e: MouseEvent | TouchEvent): { x: number; y: number } {
-    const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : e.clientX
-    const clientY = 'touches' in e ? e.touches[0]?.clientY ?? 0 : e.clientY
-
-    if (this.options.normalize) {
-      return {
-        x: clientX / window.innerWidth,
-        y: (clientY + window.scrollY) / document.documentElement.scrollHeight,
-      }
+  importData(data: Interaction[]): void {
+    for (const item of data) {
+      this.interactions.push(item)
     }
-    return { x: clientX, y: clientY + window.scrollY }
+    this.trimIfNeeded()
   }
 
-  private handleMove(e: MouseEvent | TouchEvent): void {
-    const now = Date.now()
-    if (now - this.lastMoveTime < this.options.throttle) return
-    this.lastMoveTime = now
-
-    const { x, y } = this.getCoords(e)
-    this.moves.push({ x, y, t: now - this.startedAt })
-
-    // Prune if over limit
-    if (this.moves.length > this.options.maxPoints) {
-      // Keep every other point in the oldest half
-      const half = Math.floor(this.moves.length / 2)
-      const pruned = []
-      for (let i = 0; i < half; i += 2) {
-        pruned.push(this.moves[i])
-      }
-      this.moves = pruned.concat(this.moves.slice(half))
-    }
+  exportData(): string {
+    return JSON.stringify(this.interactions)
   }
 
-  private handleDown(e: MouseEvent | TouchEvent): void {
-    const { x, y } = this.getCoords(e)
-    this.mouseDownTime = Date.now()
-    this.mouseDownPos = { x, y }
-  }
+  // ─── Internal Handlers ──────────────────
 
-  private handleUp(e: MouseEvent | TouchEvent): void {
-    if (this.mouseDownTime === 0) return
-    const duration = Date.now() - this.mouseDownTime
-    this.clicks.push({
-      ...this.mouseDownPos,
-      t: this.mouseDownTime - this.startedAt,
-      duration,
+  private onClick(e: MouseEvent): void {
+    this.push({
+      x: e.clientX, y: e.clientY,
+      type: 'click', timestamp: Date.now(),
+      duration: 0, intensity: 1, velocity: 0,
     })
-    this.mouseDownTime = 0
   }
 
-  private handleScroll(): void {
+  private onMove(e: MouseEvent): void {
     const now = Date.now()
-    const scrollY = window.scrollY
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight
-    const depth = maxScroll > 0 ? scrollY / maxScroll : 0
-    const dt = now - this.lastScrollTime
-    const velocity = dt > 0 ? (scrollY - this.lastScrollY) / dt : 0
+    const rate = this.config.sampleRate || 50
+    if (now - this.lastMoveTime < rate) return
 
-    this.scrolls.push({
-      depth,
-      t: now - this.startedAt,
+    const dx = e.clientX - this.lastMoveX
+    const dy = e.clientY - this.lastMoveY
+    const dt = now - this.lastMoveTime
+    const velocity = dt > 0 ? Math.sqrt(dx * dx + dy * dy) / dt : 0
+
+    this.push({
+      x: e.clientX, y: e.clientY,
+      type: 'move', timestamp: now,
+      duration: 0,
+      intensity: Math.min(1, velocity * 2),
       velocity,
     })
 
-    this.lastScrollY = scrollY
-    this.lastScrollTime = now
+    this.lastMoveX = e.clientX
+    this.lastMoveY = e.clientY
+    this.lastMoveTime = now
 
-    // Keep scrolls trimmed
-    if (this.scrolls.length > 5000) {
-      this.scrolls = this.scrolls.slice(-3000)
+    // Hover detection
+    if (this.config.trackHovers !== false) {
+      if (this.hoverTimer) clearTimeout(this.hoverTimer)
+      const hx = e.clientX, hy = e.clientY
+      this.hoverTimer = setTimeout(() => {
+        this.push({
+          x: hx, y: hy,
+          type: 'hover', timestamp: Date.now(),
+          duration: this.config.hoverThreshold || 500,
+          intensity: 0.6, velocity: 0,
+        })
+      }, this.config.hoverThreshold || 500)
     }
   }
 
-  /** Destroy the tracker and free resources */
-  destroy(): void {
-    this.stop()
-    this.reset()
+  private onScroll(): void {
+    const now = Date.now()
+    if (now - this.lastMoveTime < 100) return
+
+    this.push({
+      x: window.innerWidth / 2,
+      y: window.scrollY + window.innerHeight / 2,
+      type: 'scroll', timestamp: now,
+      duration: 0, intensity: 0.3, velocity: 0,
+    })
+  }
+
+  private onTouch(e: TouchEvent): void {
+    const touch = e.touches[0]
+    if (!touch) return
+    this.push({
+      x: touch.clientX, y: touch.clientY,
+      type: 'touch', timestamp: Date.now(),
+      duration: 0, intensity: 1, velocity: 0,
+    })
+  }
+
+  private push(interaction: Interaction): void {
+    this.interactions.push(interaction)
+    this.trimIfNeeded()
+  }
+
+  private trimIfNeeded(): void {
+    const max = this.config.maxInteractions || 10000
+    if (this.interactions.length > max) {
+      this.interactions = this.interactions.slice(-max)
+    }
+  }
+
+  private findHotspots(): { x: number; y: number; intensity: number }[] {
+    if (this.interactions.length < 5) return []
+
+    // Simple grid-based density clustering
+    const cellSize = 50
+    const grid = new Map<string, { x: number; y: number; count: number; totalIntensity: number }>()
+
+    for (const i of this.interactions) {
+      const gx = Math.floor(i.x / cellSize)
+      const gy = Math.floor(i.y / cellSize)
+      const key = `${gx},${gy}`
+      const cell = grid.get(key)
+      if (cell) {
+        cell.count++
+        cell.totalIntensity += i.intensity
+        cell.x = (cell.x * (cell.count - 1) + i.x) / cell.count
+        cell.y = (cell.y * (cell.count - 1) + i.y) / cell.count
+      } else {
+        grid.set(key, { x: i.x, y: i.y, count: 1, totalIntensity: i.intensity })
+      }
+    }
+
+    // Top 5 cells by density
+    const cells = Array.from(grid.values()).sort((a, b) => b.count - a.count).slice(0, 5)
+    const maxCount = cells[0]?.count || 1
+
+    return cells.map(c => ({
+      x: Math.round(c.x),
+      y: Math.round(c.y),
+      intensity: Math.round((c.count / maxCount) * 100) / 100,
+    }))
   }
 }

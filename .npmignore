@@ -1,8 +1,6 @@
 src/
 docs/
-.github/
-node_modules/
-tsup.config.ts
+test/
 tsconfig.json
 .gitignore
 *.test.*

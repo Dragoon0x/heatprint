@@ -1,7 +1,7 @@
 {
   "name": "heatprint",
   "version": "1.0.0",
-  "description": "Turn user interactions into generative art. Cursor trails, heat maps, constellation maps, flow fields. Drop it on any page.",
+  "description": "Turn user interactions into generative art. Track clicks, movements, scrolls, and hovers — render them as heatmaps, constellations, flow fields, topographic maps, and particle trails. Beautiful data visualization from real behavior.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -12,53 +12,26 @@
       "require": "./dist/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean --minify",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
-    "lint": "eslint src/",
+    "test": "node test/run.js",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "peerDependencies": {
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react": { "optional": true },
-    "react-dom": { "optional": true }
-  },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0"
   },
   "keywords": [
-    "heatmap",
-    "generative-art",
-    "cursor-tracking",
-    "interaction-data",
-    "data-visualization",
-    "canvas",
-    "analytics",
-    "user-behavior",
-    "constellation",
-    "heat-gradient",
-    "flow-field",
-    "react"
+    "heatmap", "generative-art", "interaction", "analytics", "visualization",
+    "canvas", "mouse-tracking", "click-map", "data-art", "creative-coding",
+    "flow-field", "constellation", "topographic", "particle", "heatprint"
   ],
   "author": "0xDragoon",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Dragoon0x/heatprint.git"
-  },
-  "homepage": "https://dragoon0x.github.io/heatprint/"
+  "repository": { "type": "git", "url": "https://github.com/dragoon0x/heatprint" },
+  "homepage": "https://dragoon0x.github.io/heatprint/",
+  "sideEffects": false
 }
